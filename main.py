@@ -4,7 +4,9 @@ import plotly.graph_objects as go
 import altair as alt
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+from sklearn.model_selection import train_test_split
 
+# I keep the ISO dict in case needed for maps
 iso_codes = {
     'Åland': 'ALA',
     'Afghanistan': 'AFG',
@@ -278,15 +280,10 @@ def load_global_temperature_by_city_data():
     global_temperature_by_city_df = global_temperature_by_city_df.set_index("datetime", drop=True)
     return global_temperature_by_city_df
 
-# Load global temperature data
+# Load 
 global_temperature_df = load_global_temperature_data()
-# Load temperature by country data
 temperature_by_country_df = load_temperature_by_country_data()
-
-# Load global temperature by city data
 global_temperature_by_city_df = load_global_temperature_by_city_data()
-
-# Load natural disaster dataset
 natural_disaster_df = pd.read_csv("1900_2021_DISASTERS.xlsx - emdat data.csv")
 
 ## Global Temperature Analysis Page
@@ -296,7 +293,7 @@ def global_temperature_analysis():
     plot_maximum_land_temperature()
     plot_minimum_land_temperature()
 
-  # Add explanation about polynomial regression
+  # Add explanation 
     st.markdown(
         """
         ## The trend line on each visual was obtained using Polynomial Regression
@@ -319,26 +316,23 @@ def global_temperature_analysis():
     )
 
 
-# Plot average land temperature
 def plot_average_land_temperature():
     st.subheader('Average Land Temperature')
     avg_land_temp_chart = plot_temperature(global_temperature_df, 'LandAverageTemperature', 'Monthly Average Land Temperature', 'datetime', 'Average Land Temperature in Celsius', 'blue')
     st.altair_chart(avg_land_temp_chart, use_container_width=True)
 
-# Plot maximum land temperature
 def plot_maximum_land_temperature():
     st.subheader('Maximum Land Temperature')
     max_land_temp_chart = plot_temperature(global_temperature_df, 'LandMaxTemperature', 'Maximum Land Temperature', 'datetime', 'Maximum Land Temperature in Celsius', 'red')
     st.altair_chart(max_land_temp_chart, use_container_width=True)
 
-# Plot minimum land temperature
 def plot_minimum_land_temperature():
     st.subheader('Minimum Land Temperature')
     min_land_temp_chart = plot_temperature(global_temperature_df, 'LandMinTemperature', 'Minimum Land Temperature', 'datetime', 'Minimum Land Temperature in Celsius', 'green')
     st.altair_chart(min_land_temp_chart, use_container_width=True)
 
 
-# Plot temperature data without uncertainty
+# Plot temperature data without uncertainty (we drop uncertainty bc it's not essential in recent years)
 def plot_temperature(data, column, title, x_title, y_title, color):
     chart_data = data.reset_index()  # Use the original DataFrame without any aggregation
     chart_data = chart_data.rename(columns={'datetime': 'Year'})  # Rename the datetime column to 'Year'
@@ -362,12 +356,12 @@ def plot_temperature(data, column, title, x_title, y_title, color):
     # Combine the main chart and the trend line
     chart_with_trend = (chart + trend_line).interactive()
 
-    # Add a text mark for the trend line
+    # Add a text mark for the trend line (not really working)
     text_mark = alt.Chart({'values': [{}]}).mark_text(
         align='left', baseline='top', dx=5, dy=-5,  # Adjust text alignment and position
         text='Trend Line', fontSize=10, fontWeight='bold', color='black'  # Specify text properties
     ).encode(
-        x=alt.value(10), y=alt.value(10)  # Position of the text mark
+        x=alt.value(10), y=alt.value(10)  # Position of the text mark, but this doesn't wwork that well
     )
 
     # Combine the chart with the trend line and the text mark
@@ -436,7 +430,7 @@ def temperature_by_country_analysis(temperature_by_country_df):
 def world_map_view(temperature_by_country_df):
     st.title('World Map View')
 
-    # Allow user to select the year or range of years
+    # select the year or range of years
     year_range = st.slider('Select Year or Range of Years', min_value=1750, max_value=2014, value=(1750, 2014), key='world_map_year_range')
 
     # Filter data for the selected year or range of years
@@ -458,7 +452,6 @@ def world_map_view(temperature_by_country_df):
         )
     )
 
-    # Define the layout
     layout = go.Layout(
         title='Average land temperature in countries',
         geo=dict(
@@ -483,24 +476,24 @@ def world_map_view(temperature_by_country_df):
         )
     )
 
-    # Create the figure
+   
     fig = go.Figure(data=data, layout=layout)
 
-    # Display the figure using Plotly in Streamlit
+    # Display
     st.plotly_chart(fig, use_container_width=True)
 
 def temperature_increase_view(temperature_by_country_df):
     st.title('Temperature Increase View')
 
-    # Filter the DataFrame to include only the records for the years 1750 and 2014
+    # Filter to include only the records for the years 1750 and 2014
     df_1850 = temperature_by_country_df.loc[temperature_by_country_df['datetime'].dt.year == 1850]
     df_2013 = temperature_by_country_df.loc[temperature_by_country_df['datetime'].dt.year == 2013]
 
-    # Calculate the average temperature for each country in the years 1750 and 2014
+    # cc average temperature for each country in the years 1750 and 2014
     avg_temp_1850 = df_1850.groupby('Country')['AverageTemperature'].mean()
     avg_temp_2013 = df_2013.groupby('Country')['AverageTemperature'].mean()
 
-    # Calculate the temperature difference between 1750 and 2014 for each country
+    # cc difference between 1750 and 2014 for each country
     temp_difference = avg_temp_2013 - avg_temp_1850
 
     data = go.Choropleth(
@@ -515,7 +508,7 @@ def temperature_increase_view(temperature_by_country_df):
         )
     )
 
-    # Define the layout
+  
     layout = go.Layout(
         title='Temperature Increase by Country (1850-2014)',
         geo=dict(
@@ -536,19 +529,19 @@ def temperature_increase_view(temperature_by_country_df):
         )
     )
 
-    # Create the figure
+    
     fig = go.Figure(data=data, layout=layout)
 
-    # Display the figure using Plotly in Streamlit
+    # Display 
     st.plotly_chart(fig, use_container_width=True)
 
-# Define function to plot top 10 countries for occurrence of natural disasters
+# Define function 
 def plot_top_countries_for_disasters():
     st.subheader("Top 10 Countries for Occurrence of Natural Disasters")
     top_countries = natural_disaster_df['Country'].value_counts().nlargest(10)
     st.bar_chart(top_countries)
 
-# Define function to plot line graph of natural disasters by type over time
+# Define function 
 def plot_disasters_by_type_over_time():
     st.subheader("Natural Disasters by Type Over Time")
     disasters_by_type = natural_disaster_df.groupby(['Year', 'Disaster Type']).size().reset_index(name='Count')
@@ -563,7 +556,7 @@ def plot_disasters_by_type_over_time():
     st.altair_chart(line_chart, use_container_width=True)
 
 
-# Define function to plot line graph with user-selected countries
+# Define function t
 def plot_user_selected_countries():
     st.subheader("Natural Disasters by country")
     selected_countries = st.multiselect("Select Countries", natural_disaster_df['Country'].unique())
@@ -577,7 +570,7 @@ def plot_user_selected_countries():
         # Plot line chart if data is available
         line_chart = alt.Chart(selected_data_grouped).mark_line().encode(
             x=alt.X('Year:T', title='Year', axis=alt.Axis(format='%Y')),  # Specify Year as a temporal field
-            y='Count:Q',  # Specify Count as a quantitative field
+            y='Count:Q',  # Specify count as a quantitative field
             color='Disaster Type:N',  # Specify Disaster Type as a nominal field for the legend
             tooltip=['Year:T', 'Count:Q', 'Country:N', 'Disaster Type:N']  # Tooltip fields
         ).properties(
@@ -589,7 +582,7 @@ def plot_user_selected_countries():
     else:
         st.write("No data available for the selected countries.")
 
-    # Define function for the Natural Disasters page
+    # Define 
 def natural_disaster_analysis():
     st.title("Natural Disasters Analysis")
     plot_top_countries_for_disasters()
@@ -597,54 +590,116 @@ def natural_disaster_analysis():
     plot_user_selected_countries()
 
 
+
 def forecast_temperature_by_city():
     st.title('Temperature Forecast for Major Cities')
 
-    # Select major cities
+    # Select
     selected_cities = st.multiselect("Select Cities", global_temperature_by_city_df['City'].unique())
 
     for city in selected_cities:
         city_data = global_temperature_by_city_df[global_temperature_by_city_df['City'] == city]
 
         if not city_data.empty:
-            # Perform time series forecasting
-            model = ARIMA(city_data['AverageTemperature'], order=(5, 1, 0))
-            model_fit = model.fit()
-            forecast = model_fit.forecast(steps=72)  # Forecast for the next 6 years (72 months)
+            # Filter the last 20 years of data
+            last_20_years_data = city_data[city_data.index >= '1994-01-01']
 
-            # Create DataFrame for forecasted data
-            forecast_index = pd.date_range(start=city_data.index[-1], periods=73, freq='M')[1:]
-            forecast_df = pd.DataFrame({'Date': forecast_index, 'Temperature': forecast})
+            # Split data into train and validation sets
+            train_data, val_data = train_test_split(last_20_years_data['AverageTemperature'], test_size=0.2, shuffle=False)
 
-            # Plot the forecasted temperature
-            st.subheader(f"Temperature Forecast for {city}")
-            st.line_chart(forecast_df.set_index('Date'))
-        else:
-            st.write(f"No data available for {city}.")
+            # Fit SARIMA model on training data
+            sarima_model = SARIMAX(train_data, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
+            sarima_fit = sarima_model.fit(disp=False)
 
-# Create pages on the sidebar
+            # Forecast on validation data
+            val_forecast = sarima_fit.get_forecast(steps=len(val_data))
+            val_predicted_mean = val_forecast.predicted_mean
+            val_conf_int = val_forecast.conf_int()
+
+            # actual and validation data for plotting
+            combined_data = pd.concat([train_data, val_data])
+            combined_data.index = pd.to_datetime(combined_data.index)
+
+            # DataFrame for the predicted values
+            val_predicted_mean.index = val_data.index
+
+            # Plot the actual and validation data
+            st.subheader(f"Temperature Forecast for {city} (Last 20 Years)")
+
+            # Plot actual and predicted data
+            actual_data_df = pd.DataFrame({'Actual': combined_data})
+            predicted_data_df = pd.DataFrame({'Predicted': val_predicted_mean})
+
+            st.line_chart(actual_data_df.join(predicted_data_df, how='outer'))
+
+            
+
+def forecast_disasters_by_country():
+    st.title('Natural Disasters Forecast by Country')
+
+    # select countries
+    selected_countries = st.multiselect('Select Countries', natural_disaster_df['Country'].unique())
+
+    for country in selected_countries:
+        country_data = natural_disaster_df[natural_disaster_df['Country'] == country]
+
+        if not country_data.empty:
+            # datetime type
+            country_data['Year'] = pd.to_datetime(country_data['Year'], format='%Y')
+            country_data = country_data.set_index('Year')
+
+            # Resample data by year and count occurrences
+            yearly_data = country_data.resample('Y').size()
+
+            # Split data, train and validation sets
+            train_data, val_data = train_test_split(yearly_data, test_size=0.2, shuffle=False)
+
+            # Fit SARIMA model on the training data
+            sarima_model = SARIMAX(train_data, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
+            sarima_fit = sarima_model.fit(disp=False)
+
+            # Forecast on validation data
+            val_forecast = sarima_fit.get_forecast(steps=len(val_data))
+            val_predicted_mean = val_forecast.predicted_mean
+            val_conf_int = val_forecast.conf_int()
+
+            #  actual and validation data for plotting
+            combined_data = pd.concat([train_data, val_data])
+            combined_data.index = pd.to_datetime(combined_data.index)
+
+            # DataFrame for the predicted values
+            val_predicted_mean.index = val_data.index
+
+            st.subheader(f"Natural Disasters Forecast for {country}")
+
+            # Plot actual and predicted data
+            actual_data_df = pd.DataFrame({'Actual': combined_data})
+            predicted_data_df = pd.DataFrame({'Predicted': val_predicted_mean})
+
+            st.line_chart(actual_data_df.join(predicted_data_df, how='outer'))
+
+# sidebar
 pages = {
     "Global Temperature Analysis": global_temperature_analysis,
     "Temperature by country analysis": temperature_by_country_analysis,
     "World map": world_map_view,
     "Increase in temperature": temperature_increase_view,
     "Natural Disasters": natural_disaster_analysis,
+    "Forecast Disasters by Country": forecast_disasters_by_country,
     "Temperature Forecast": forecast_temperature_by_city
 }
+
 # Sidebar navigation
 st.sidebar.title('Climate Dashboard')
 selection = st.sidebar.radio("Go to", list(pages.keys()))
 
 
-# Display the selected page
+# Display 
 if selection == "Temperature by country analysis":
     pages[selection](temperature_by_country_df)  # Pass temperature_by_country_df when calling the selected function
 elif selection == "World map":
     pages[selection](temperature_by_country_df)
 elif selection == "Increase in temperature":
     pages[selection](temperature_by_country_df)
-#elif selection == "Forecast":
-    #pages[selection](temperature_by_country_df)
-    # Pass temperature_by_country_df when calling the selected function
 else:
-    pages[selection]() # For other pages, just call the function without passing temperature_by_country_df
+    pages[selection]()
