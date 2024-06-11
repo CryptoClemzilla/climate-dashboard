@@ -4,9 +4,13 @@ import plotly.graph_objects as go
 import altair as alt
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
-from sklearn.model_selection import train_test_split
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import mean_squared_error, classification_report
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+import numpy as np
 
-# I keep the ISO dict in case needed for maps
 iso_codes = {
     'Åland': 'ALA',
     'Afghanistan': 'AFG',
@@ -252,6 +256,17 @@ iso_codes = {
     'Zimbabwe': 'ZWE'
 }
 
+st.set_page_config(page_title="Climate Dashboard", page_icon=":earth:", layout="wide", initial_sidebar_state="expanded")
+
+#Add custom CSS FONT
+st.write("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@200&display=swap');
+html, body, [class*="css"]  {
+   font-family: 'Lexend', sans-serif;
+}
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_data
 def load_global_temperature_data():
@@ -280,20 +295,25 @@ def load_global_temperature_by_city_data():
     global_temperature_by_city_df = global_temperature_by_city_df.set_index("datetime", drop=True)
     return global_temperature_by_city_df
 
-# Load 
+# Load global temperature data
 global_temperature_df = load_global_temperature_data()
+# Load temperature by country data
 temperature_by_country_df = load_temperature_by_country_data()
+
+# Load global temperature by city data
 global_temperature_by_city_df = load_global_temperature_by_city_data()
+
+# Load natural disaster dataset
 natural_disaster_df = pd.read_csv("1900_2021_DISASTERS.xlsx - emdat data.csv")
 
 ## Global Temperature Analysis Page
 def global_temperature_analysis():
-    st.title('Global Temperature Analysis')
+    st.title('🌍 Global Temperature Analysis')
     plot_average_land_temperature()
     plot_maximum_land_temperature()
     plot_minimum_land_temperature()
 
-  # Add explanation 
+  # Add explanation about polynomial regression
     st.markdown(
         """
         ## The trend line on each visual was obtained using Polynomial Regression
@@ -316,23 +336,26 @@ def global_temperature_analysis():
     )
 
 
+# Plot average land temperature
 def plot_average_land_temperature():
-    st.subheader('Average Land Temperature')
+    st.subheader('🌡️ Average Land Temperature')
     avg_land_temp_chart = plot_temperature(global_temperature_df, 'LandAverageTemperature', 'Monthly Average Land Temperature', 'datetime', 'Average Land Temperature in Celsius', 'blue')
     st.altair_chart(avg_land_temp_chart, use_container_width=True)
 
+# Plot maximum land temperature
 def plot_maximum_land_temperature():
-    st.subheader('Maximum Land Temperature')
+    st.subheader('🔥 Maximum Land Temperature')
     max_land_temp_chart = plot_temperature(global_temperature_df, 'LandMaxTemperature', 'Maximum Land Temperature', 'datetime', 'Maximum Land Temperature in Celsius', 'red')
     st.altair_chart(max_land_temp_chart, use_container_width=True)
 
+# Plot minimum land temperature
 def plot_minimum_land_temperature():
-    st.subheader('Minimum Land Temperature')
+    st.subheader('❄️ Minimum Land Temperature')
     min_land_temp_chart = plot_temperature(global_temperature_df, 'LandMinTemperature', 'Minimum Land Temperature', 'datetime', 'Minimum Land Temperature in Celsius', 'green')
     st.altair_chart(min_land_temp_chart, use_container_width=True)
 
 
-# Plot temperature data without uncertainty (we drop uncertainty bc it's not essential in recent years)
+# Plot temperature data without uncertainty
 def plot_temperature(data, column, title, x_title, y_title, color):
     chart_data = data.reset_index()  # Use the original DataFrame without any aggregation
     chart_data = chart_data.rename(columns={'datetime': 'Year'})  # Rename the datetime column to 'Year'
@@ -356,12 +379,12 @@ def plot_temperature(data, column, title, x_title, y_title, color):
     # Combine the main chart and the trend line
     chart_with_trend = (chart + trend_line).interactive()
 
-    # Add a text mark for the trend line (not really working)
+    # Add a text mark for the trend line
     text_mark = alt.Chart({'values': [{}]}).mark_text(
         align='left', baseline='top', dx=5, dy=-5,  # Adjust text alignment and position
         text='Trend Line', fontSize=10, fontWeight='bold', color='black'  # Specify text properties
     ).encode(
-        x=alt.value(10), y=alt.value(10)  # Position of the text mark, but this doesn't wwork that well
+        x=alt.value(10), y=alt.value(10)  # Position of the text mark
     )
 
     # Combine the chart with the trend line and the text mark
@@ -372,7 +395,7 @@ def plot_temperature(data, column, title, x_title, y_title, color):
 ##Temp by country
 
 def temperature_by_country_analysis(temperature_by_country_df):
-    st.title('Temperature History Across Time')
+    st.title('🌍 Temperature History Across Time')
     # Dropdown for selecting countries
     selected_countries = st.multiselect('Select Countries', temperature_by_country_df['Country'].unique())
     # Checkbox for selecting display mode
@@ -428,10 +451,10 @@ def temperature_by_country_analysis(temperature_by_country_df):
 # World Map View Page
 
 def world_map_view(temperature_by_country_df):
-    st.title('World Map View')
+    st.title('🗺️ World Map View')
 
-    # select the year or range of years
-    year_range = st.slider('Select Year or Range of Years', min_value=1750, max_value=2014, value=(1750, 2014), key='world_map_year_range')
+    # Allow user to select the year or range of years
+    year_range = st.slider('📅 Select Year or Range of Years', min_value=1750, max_value=2014, value=(1750, 2014), key='world_map_year_range')
 
     # Filter data for the selected year or range of years
     filtered_data = temperature_by_country_df.loc[
@@ -452,6 +475,7 @@ def world_map_view(temperature_by_country_df):
         )
     )
 
+    # Define the layout
     layout = go.Layout(
         title='Average land temperature in countries',
         geo=dict(
@@ -476,24 +500,24 @@ def world_map_view(temperature_by_country_df):
         )
     )
 
-   
+    # Create the figure
     fig = go.Figure(data=data, layout=layout)
 
-    # Display
+    # Display the figure using Plotly in Streamlit
     st.plotly_chart(fig, use_container_width=True)
 
 def temperature_increase_view(temperature_by_country_df):
-    st.title('Temperature Increase View')
+    st.title('📈 Temperature Increase View')
 
-    # Filter to include only the records for the years 1750 and 2014
+    # Filter the DataFrame to include only the records for the years 1750 and 2014
     df_1850 = temperature_by_country_df.loc[temperature_by_country_df['datetime'].dt.year == 1850]
     df_2013 = temperature_by_country_df.loc[temperature_by_country_df['datetime'].dt.year == 2013]
 
-    # cc average temperature for each country in the years 1750 and 2014
+    # Calculate the average temperature for each country in the years 1750 and 2014
     avg_temp_1850 = df_1850.groupby('Country')['AverageTemperature'].mean()
     avg_temp_2013 = df_2013.groupby('Country')['AverageTemperature'].mean()
 
-    # cc difference between 1750 and 2014 for each country
+    # Calculate the temperature difference between 1750 and 2014 for each country
     temp_difference = avg_temp_2013 - avg_temp_1850
 
     data = go.Choropleth(
@@ -508,7 +532,7 @@ def temperature_increase_view(temperature_by_country_df):
         )
     )
 
-  
+    # Define the layout
     layout = go.Layout(
         title='Temperature Increase by Country (1850-2014)',
         geo=dict(
@@ -529,21 +553,21 @@ def temperature_increase_view(temperature_by_country_df):
         )
     )
 
-    
+    # Create the figure
     fig = go.Figure(data=data, layout=layout)
 
-    # Display 
+    # Display the figure using Plotly in Streamlit
     st.plotly_chart(fig, use_container_width=True)
 
-# Define function 
+# Define function to plot top 10 countries for occurrence of natural disasters
 def plot_top_countries_for_disasters():
-    st.subheader("Top 10 Countries for Occurrence of Natural Disasters")
+    st.subheader("🌐 Top 10 Countries for Occurrence of Natural Disasters")
     top_countries = natural_disaster_df['Country'].value_counts().nlargest(10)
     st.bar_chart(top_countries)
 
-# Define function 
+# Define function to plot line graph of natural disasters by type over time
 def plot_disasters_by_type_over_time():
-    st.subheader("Natural Disasters by Type Over Time")
+    st.subheader("🌀 Natural Disasters by Type Over Time")
     disasters_by_type = natural_disaster_df.groupby(['Year', 'Disaster Type']).size().reset_index(name='Count')
     line_chart = alt.Chart(disasters_by_type).mark_line().encode(
         x='Year',
@@ -556,9 +580,9 @@ def plot_disasters_by_type_over_time():
     st.altair_chart(line_chart, use_container_width=True)
 
 
-# Define function t
+# Define function to plot line graph with user-selected countries
 def plot_user_selected_countries():
-    st.subheader("Natural Disasters by country")
+    st.subheader("🌋 Natural Disasters by country")
     selected_countries = st.multiselect("Select Countries", natural_disaster_df['Country'].unique())
     selected_data = natural_disaster_df[natural_disaster_df['Country'].isin(selected_countries)]
 
@@ -570,7 +594,7 @@ def plot_user_selected_countries():
         # Plot line chart if data is available
         line_chart = alt.Chart(selected_data_grouped).mark_line().encode(
             x=alt.X('Year:T', title='Year', axis=alt.Axis(format='%Y')),  # Specify Year as a temporal field
-            y='Count:Q',  # Specify count as a quantitative field
+            y='Count:Q',  # Specify Count as a quantitative field
             color='Disaster Type:N',  # Specify Disaster Type as a nominal field for the legend
             tooltip=['Year:T', 'Count:Q', 'Country:N', 'Disaster Type:N']  # Tooltip fields
         ).properties(
@@ -582,19 +606,18 @@ def plot_user_selected_countries():
     else:
         st.write("No data available for the selected countries.")
 
-    # Define 
+    # Define function for the Natural Disasters page
 def natural_disaster_analysis():
-    st.title("Natural Disasters Analysis")
+    st.title("🌪️ Natural Disasters Analysis")
     plot_top_countries_for_disasters()
     plot_disasters_by_type_over_time()
     plot_user_selected_countries()
 
 
-
 def forecast_temperature_by_city():
-    st.title('Temperature Forecast for Major Cities')
+    st.title('🔮 Temperature Forecast for Major Cities')
 
-    # Select
+    # Select major cities
     selected_cities = st.multiselect("Select Cities", global_temperature_by_city_df['City'].unique())
 
     for city in selected_cities:
@@ -607,7 +630,7 @@ def forecast_temperature_by_city():
             # Split data into train and validation sets
             train_data, val_data = train_test_split(last_20_years_data['AverageTemperature'], test_size=0.2, shuffle=False)
 
-            # Fit SARIMA model on training data
+            # Fit SARIMA model on the training data
             sarima_model = SARIMAX(train_data, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
             sarima_fit = sarima_model.fit(disp=False)
 
@@ -616,11 +639,11 @@ def forecast_temperature_by_city():
             val_predicted_mean = val_forecast.predicted_mean
             val_conf_int = val_forecast.conf_int()
 
-            # actual and validation data for plotting
+            # Concatenate actual and validation data for plotting
             combined_data = pd.concat([train_data, val_data])
             combined_data.index = pd.to_datetime(combined_data.index)
 
-            # DataFrame for the predicted values
+            # Create a DataFrame for the predicted values
             val_predicted_mean.index = val_data.index
 
             # Plot the actual and validation data
@@ -632,26 +655,25 @@ def forecast_temperature_by_city():
 
             st.line_chart(actual_data_df.join(predicted_data_df, how='outer'))
 
-            
 
 def forecast_disasters_by_country():
-    st.title('Natural Disasters Forecast by Country')
+    st.title('🔮 Natural Disasters Forecast by Country')
 
-    # select countries
+    # Allow user to select countries
     selected_countries = st.multiselect('Select Countries', natural_disaster_df['Country'].unique())
 
     for country in selected_countries:
         country_data = natural_disaster_df[natural_disaster_df['Country'] == country]
 
         if not country_data.empty:
-            # datetime type
+            # Ensure 'Year' is treated as a datetime type
             country_data['Year'] = pd.to_datetime(country_data['Year'], format='%Y')
             country_data = country_data.set_index('Year')
 
             # Resample data by year and count occurrences
             yearly_data = country_data.resample('Y').size()
 
-            # Split data, train and validation sets
+            # Split data into train and validation sets
             train_data, val_data = train_test_split(yearly_data, test_size=0.2, shuffle=False)
 
             # Fit SARIMA model on the training data
@@ -663,13 +685,14 @@ def forecast_disasters_by_country():
             val_predicted_mean = val_forecast.predicted_mean
             val_conf_int = val_forecast.conf_int()
 
-            #  actual and validation data for plotting
+            # Concatenate actual and validation data for plotting
             combined_data = pd.concat([train_data, val_data])
             combined_data.index = pd.to_datetime(combined_data.index)
 
-            # DataFrame for the predicted values
+            # Create a DataFrame for the predicted values
             val_predicted_mean.index = val_data.index
 
+            # Plot the actual and validation data
             st.subheader(f"Natural Disasters Forecast for {country}")
 
             # Plot actual and predicted data
@@ -678,28 +701,234 @@ def forecast_disasters_by_country():
 
             st.line_chart(actual_data_df.join(predicted_data_df, how='outer'))
 
-# sidebar
-pages = {
-    "Global Temperature Analysis": global_temperature_analysis,
-    "Temperature by country analysis": temperature_by_country_analysis,
-    "World map": world_map_view,
-    "Increase in temperature": temperature_increase_view,
-    "Natural Disasters": natural_disaster_analysis,
-    "Forecast Disasters by Country": forecast_disasters_by_country,
-    "Temperature Forecast": forecast_temperature_by_city
-}
 
-# Sidebar navigation
-st.sidebar.title('Climate Dashboard')
-selection = st.sidebar.radio("Go to", list(pages.keys()))
+# Future Temperature Prediction Page with Model Comparison
+def future_temperature_prediction_with_model_comparison():
+    st.title('🔮 Future Temperature Prediction with Model Comparison')
+
+    # Sidebar for selecting model and country
+    model_type = st.sidebar.selectbox('Select Model', ('SARIMAX', 'ARIMA', 'Exponential Smoothing'))
+    st.write(f'Selected Model: {model_type}')
+    selected_country = st.sidebar.selectbox('Select Country', temperature_by_country_df['Country'].unique())
+    st.write(f'Selected Country: {selected_country}')
+
+    # Filter the temperature data for the selected country
+    data = temperature_by_country_df[temperature_by_country_df['Country'] == selected_country]
+    data = data['AverageTemperature'].dropna()
+
+    # Split the data into train and test sets
+    train_data, test_data = train_test_split(data, test_size=0.2, shuffle=False)
+
+    # Fit the selected model
+    if model_type == 'SARIMAX':
+        model = SARIMAX(train_data, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
+    elif model_type == 'ARIMA':
+        model = ARIMA(train_data, order=(1, 1, 1))
+    elif model_type == 'Exponential Smoothing':
+        model = ExponentialSmoothing(train_data, seasonal='add', seasonal_periods=12)
+    fitted_model = model.fit()
+
+    # Make predictions
+    predictions = fitted_model.forecast(len(test_data))
+
+    # Calculate evaluation metrics
+    mse = mean_squared_error(test_data, predictions)
+    rmse = np.sqrt(mse)
+
+    st.write(f'Mean Squared Error (MSE): {mse:.2f}')
+    st.write(f'Root Mean Squared Error (RMSE): {rmse:.2f}')
+
+    # Plot the results
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=train_data.index, y=train_data, mode='lines', name='Train Data'))
+    fig.add_trace(go.Scatter(x=test_data.index, y=test_data, mode='lines', name='Test Data'))
+    fig.add_trace(go.Scatter(x=test_data.index, y=predictions, mode='lines', name='Predictions'))
+    fig.update_layout(title=f'Future Temperature Prediction using {model_type}', xaxis_title='Date', yaxis_title='Temperature (°C)')
+    st.plotly_chart(fig)
+
+    # Add explanation about the selected model
+    if model_type == 'SARIMAX':
+        st.markdown(
+            """
+            ## Seasonal ARIMA with Exogenous Variables (SARIMAX)
+
+            The SARIMAX model extends ARIMA by adding support for exogenous variables (covariates) and seasonality. It is particularly
+            useful for time series data with seasonal patterns. The SARIMAX model can capture both the trend and seasonal components,
+            making it suitable for predicting temperature data that exhibit these patterns.
+
+            - **Order (p, d, q)**: Specifies the autoregressive (AR) order, differencing order, and moving average (MA) order.
+            - **Seasonal Order (P, D, Q, s)**: Specifies the seasonal components for AR, differencing, and MA along with the seasonal period.
+
+            ### Why SARIMAX?
+
+            - **Handles Seasonality**: SARIMAX can capture and model seasonal effects in the data.
+            - **Includes Exogenous Variables**: Allows incorporating other relevant variables that might influence the time series.
+            - **Flexibility**: Can model a wide range of time series behaviors, making it suitable for complex datasets.
+            """
+        )
+    elif model_type == 'ARIMA':
+        st.markdown(
+            """
+            ## Autoregressive Integrated Moving Average (ARIMA)
+
+            The ARIMA model is a widely used time series forecasting method that combines autoregressive (AR) and moving average (MA) components,
+            along with differencing to make the time series stationary. ARIMA models are particularly effective for data with trends but without
+            strong seasonal patterns.
+
+            - **Order (p, d, q)**: Specifies the autoregressive order (p), differencing order (d), and moving average order (q).
+
+            ### Why ARIMA?
+
+            - **Simplicity**: ARIMA is relatively simple to implement and understand.
+            - **Effective for Trend Data**: Suitable for datasets with trends and no strong seasonality.
+            - **Widespread Use**: A well-established method with extensive resources and community support.
+            """
+        )
+    elif model_type == 'Exponential Smoothing':
+        st.markdown(
+            """
+            ## Exponential Smoothing
+
+            Exponential Smoothing models are a class of forecasting methods that weigh past observations with exponentially decreasing weights.
+            These models are particularly useful for data with trends and seasonality.
+
+            - **Level, Trend, Seasonality**: The model can include components for the level, trend, and seasonal patterns.
+
+            ### Why Exponential Smoothing?
+
+            - **Handles Trends and Seasonality**: Effective for time series data with both trend and seasonal components.
+            - **Smooth Predictions**: Produces smooth and stable forecasts.
+            - **Easy to Interpret**: The model's components are intuitive and easy to understand.
+            """
+        )
 
 
-# Display 
-if selection == "Temperature by country analysis":
-    pages[selection](temperature_by_country_df)  # Pass temperature_by_country_df when calling the selected function
-elif selection == "World map":
-    pages[selection](temperature_by_country_df)
-elif selection == "Increase in temperature":
-    pages[selection](temperature_by_country_df)
-else:
-    pages[selection]()
+# Function to preprocess and merge the datasets for the prediction page
+def preprocess_data(temperature_by_country_df, natural_disaster_df):
+    # Clean country names to ensure a proper merge
+    temperature_by_country_df['Country'] = temperature_by_country_df['Country'].str.strip()
+    natural_disaster_df['Country'] = natural_disaster_df['Country'].str.strip()
+
+    # Get the common countries in both datasets
+    common_countries = set(temperature_by_country_df['Country']).intersection(set(natural_disaster_df['Country']))
+
+    # Debug: Check the common countries
+    st.write("Common countries in both datasets:")
+    st.write(common_countries)
+
+    temperature_by_country_df = temperature_by_country_df[temperature_by_country_df['Country'].isin(common_countries)]
+    natural_disaster_df = natural_disaster_df[natural_disaster_df['Country'].isin(common_countries)]
+
+    # Aggregate temperature data by country and year
+    temperature_by_country_df['Year'] = temperature_by_country_df['datetime'].dt.year
+    avg_temp_by_country_year = temperature_by_country_df.groupby(['Country', 'Year'])[
+        'AverageTemperature'].mean().reset_index()
+
+    # Debug: Check the intermediate data
+    st.write("Average Temperature by Country and Year:")
+    st.dataframe(avg_temp_by_country_year.head())
+
+    st.write("Natural Disaster Data:")
+    st.dataframe(natural_disaster_df.head())
+
+    # Merge temperature data with disaster data
+    merged_df = pd.merge(natural_disaster_df, avg_temp_by_country_year, on=['Country', 'Year'], how='left')
+    merged_df.dropna(inplace=True)  # Drop rows with missing values
+
+    # Debug: Check the merged data
+    st.write("Merged Data:")
+    st.dataframe(merged_df.head())
+    st.write("Merged Data Shape:")
+    st.write(merged_df.shape)
+
+    return merged_df
+
+
+# Page for predicting natural disaster type and count
+def predict_disasters():
+    st.title("Predicting Natural Disasters 🌪️🌡️")
+
+    # Create the merged dataset
+    merged_df = preprocess_data(temperature_by_country_df, natural_disaster_df)
+
+    if merged_df.empty:
+        st.write("Merged data is empty after preprocessing.")
+        return
+
+    selected_country = st.selectbox('Select Country', merged_df['Country'].unique())
+    country_data = merged_df[merged_df['Country'] == selected_country]
+
+    if country_data.empty:
+        st.write(f"No data available for {selected_country}.")
+        return
+
+    # Features and target for type prediction
+    features_type = ['AverageTemperature']
+    X_type = country_data[features_type]
+    y_type = country_data['Disaster Type']
+
+    # Features and target for count prediction
+    features_count = ['AverageTemperature']
+    X_count = country_data[features_count]
+    y_count = country_data.groupby('Year')['Dis No'].count().reset_index(drop=True)
+
+    # Train-test split
+    X_type_train, X_type_test, y_type_train, y_type_test = train_test_split(X_type, y_type, test_size=0.2,
+                                                                            random_state=42)
+    X_count_train, X_count_test, y_count_train, y_count_test = train_test_split(X_count, y_count, test_size=0.2,
+                                                                                random_state=42)
+
+    # Classification model for disaster type prediction
+    st.subheader("Predicting Disaster Type")
+    clf = RandomForestClassifier(random_state=42)
+    clf.fit(X_type_train, y_type_train)
+    y_type_pred = clf.predict(X_type_test)
+    st.write("Classification Report:")
+    st.text(classification_report(y_type_test, y_type_pred))
+
+    # Regression model for disaster count prediction
+    st.subheader("Predicting Disaster Count")
+    reg = RandomForestRegressor(random_state=42)
+    reg.fit(X_count_train, y_count_train)
+    y_count_pred = reg.predict(X_count_test)
+    mse = mean_squared_error(y_count_test, y_count_pred)
+    rmse = np.sqrt(mse)
+    st.write(f"Mean Squared Error (MSE): {mse:.2f}")
+    st.write(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
+
+    # Plot actual vs predicted counts
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=y_count_test.index, y=y_count_test, mode='lines', name='Actual'))
+    fig.add_trace(go.Scatter(x=y_count_test.index, y=y_count_pred, mode='lines', name='Predicted'))
+    fig.update_layout(title='Actual vs Predicted Disaster Counts', xaxis_title='Year', yaxis_title='Disaster Count')
+    st.plotly_chart(fig)
+
+# Main function to run the Streamlit app
+def main():
+    st.sidebar.title('Climate Dashboard 🍃')
+    st.sidebar.header('Navigation')
+    options = ['Global Temperature Analysis', 'Temperature by Country Analysis', 'World map of temperature',
+               'World map of temperature increase', 'Natural Disasters Analysis', 'Forecast Disasters By Country',
+               'Future Temperature Prediction By City','Future Temperature Prediction with Model Comparison', 'Disaster Type Prediction']
+    choice = st.sidebar.radio('Select Page ⬇️', options)
+
+    if choice == 'Global Temperature Analysis':
+        global_temperature_analysis()
+    elif choice == 'Temperature by Country Analysis':
+        temperature_by_country_analysis(temperature_by_country_df)
+    elif choice == 'World map of temperature':
+        world_map_view(temperature_by_country_df)
+    elif choice == 'World map of temperature increase':
+        temperature_increase_view(temperature_by_country_df)
+    elif choice == 'Natural Disasters Analysis':
+        natural_disaster_analysis()
+    elif choice == 'Forecast Disasters By Country':
+        forecast_disasters_by_country()
+    elif choice == 'Future Temperature Prediction By City':
+        forecast_temperature_by_city()
+    elif choice == 'Future Temperature Prediction with Model Comparison':
+        future_temperature_prediction_with_model_comparison()
+    elif choice == 'Disaster Type Prediction':
+        predict_disasters()
+
+main()
