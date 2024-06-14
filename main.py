@@ -658,6 +658,13 @@ def forecast_temperature_by_city():
 
 def forecast_disasters_by_country():
     st.title('🔮 Natural Disasters Forecast by Country')
+    st.markdown(
+        """
+The model used is SARIMAX. The SARIMAX model extends ARIMA by adding support for exogenous variables (covariates) and seasonality. It is particularly
+ useful for time series data with seasonal patterns. The SARIMAX model can capture both the trend and seasonal components,
+ making it suitable for predicting temperature data that exhibit these patterns.
+        """
+    )
 
     # Allow user to select countries
     selected_countries = st.multiselect('Select Countries', natural_disaster_df['Country'].unique())
